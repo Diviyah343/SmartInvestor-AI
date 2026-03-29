@@ -1,0 +1,1403 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmartInvestor AI - Investment Dashboard</title>
+  <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body, #root { width: 100%; height: 100%; }
+    body { background: #060d1a; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    /* Initialize localStorage-based storage API */
+    window.storage = {
+      set: async (key, value) => {
+        localStorage.setItem(key, value);
+        return Promise.resolve();
+      },
+      get: async (key) => {
+        const value = localStorage.getItem(key);
+        return value ? { value } : null;
+      },
+      delete: async (key) => {
+        localStorage.removeItem(key);
+        return Promise.resolve();
+      }
+    };
+  </script>
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+/* ═══════════════════════════════════════════════════════════
+   DESIGN TOKENS
+═══════════════════════════════════════════════════════════ */
+const T = {
+  green:  "#10b981",
+  greenD: "#059669",
+  greenL: "#34d399",
+  gold:   "#f59e0b",
+  red:    "#ef4444",
+  blue:   "#3b82f6",
+  purple: "#8b5cf6",
+  muted:  "#94a3b8",
+  border: "rgba(148,163,184,0.11)",
+  card:   "#0f1929",
+  cardH:  "#162035",
+  bg:     "#060d1a",
+};
+
+/* ═══════════════════════════════════════════════════════════
+   MOCK DATA
+═══════════════════════════════════════════════════════════ */
+const PORTFOLIO_INIT = [
+  { id:1, name:"TCS",             type:"Stock",       sector:"IT",      value:125000, alloc:25, chg:2.4,  sig:"HOLD" },
+  { id:2, name:"HDFC Bank",       type:"Stock",       sector:"Finance", value:95000,  alloc:19, chg:1.1,  sig:"BUY"  },
+  { id:3, name:"Reliance",        type:"Stock",       sector:"Energy",  value:80000,  alloc:16, chg:-0.8, sig:"HOLD" },
+  { id:4, name:"Infosys",         type:"Stock",       sector:"IT",      value:70000,  alloc:14, chg:3.2,  sig:"BUY"  },
+  { id:5, name:"SBI Bluechip MF", type:"Mutual Fund", sector:"Equity",  value:60000,  alloc:12, chg:1.8,  sig:"BUY"  },
+  { id:6, name:"Axis ELSS",       type:"Mutual Fund", sector:"ELSS",    value:40000,  alloc:8,  chg:2.1,  sig:"HOLD" },
+  { id:7, name:"Gold Bond",       type:"Bond",        sector:"Gold",    value:30000,  alloc:6,  chg:0.5,  sig:"HOLD" },
+];
+
+const OPPS_INIT = [
+  { id:1, name:"Zomato",        type:"Stock", reason:"Bullish breakout above 200-day MA. Food delivery volumes up 34% QoQ.", sig:"BUY",       target:"₹230",   up:"+18%",       risk:"Medium", sector:"Consumer",  watchlisted:false },
+  { id:2, name:"Bajaj Finance", type:"Stock", reason:"Strong NIM expansion. Q3 PAT beat by 8%. Loan book growing.",         sig:"BUY",       target:"₹8,200", up:"+12%",       risk:"Low",    sector:"NBFC",      watchlisted:false },
+  { id:3, name:"Navi Nifty ETF",type:"ETF",  reason:"Lowest expense ratio 0.06%. Good entry post correction.",              sig:"ACCUMULATE",target:"SIP",    up:"Index",      risk:"Low",    sector:"Index",     watchlisted:false },
+  { id:4, name:"RVNL IPO",      type:"IPO",  reason:"Order book ₹75,000 Cr. PSU infra play. 3�  oversubscribed.",           sig:"SUBSCRIBE", target:"₹620",   up:"+22%",       risk:"Medium", sector:"Infra",     watchlisted:false },
+  { id:5, name:"Mirae ELSS",    type:"MF",   reason:"Tax saving + wealth. 5Y CAGR 18.2%. Top 3 in category.",               sig:"INVEST",    target:"SIP",    up:"Tax+Returns",risk:"Medium", sector:"ELSS",      watchlisted:false },
+];
+
+const ALERTS_INIT = [
+  { id:1, type:"warning",     title:"Portfolio Concentration Risk", msg:"IT sector now 39% of portfolio. Recommended max: 25%.",             time:"2 min ago",  read:false },
+  { id:2, type:"opportunity", title:"HDFC Bank Breakout",           msg:"HDFC Bank crossed ₹1,750 resistance with high volume.",            time:"18 min ago", read:false },
+  { id:3, type:"info",        title:"Nifty 50 hits 52-week high",   msg:"Index at 23,850. Your portfolio is up ₹12,400 today (+2.1%).",     time:"45 min ago", read:true  },
+  { id:4, type:"success",     title:"Tax Saving Reminder",          msg:"₹90,000 more in ELSS needed to maximise Section 80C benefit.",     time:"2 hrs ago",  read:true  },
+  { id:5, type:"warning",     title:"SIP Date Tomorrow",            msg:"Your ₹5,000 SIP in SBI Bluechip will be debited tomorrow.",        time:"5 hrs ago",  read:true  },
+];
+
+const TICKER_DATA = [
+  { s:"NIFTY 50",  v:"23,850.40", c:"+1.20%",positive:true  },
+  { s:"SENSEX",    v:"78,553.20", c:"+0.89%",positive:true  },
+  { s:"TCS",       v:"4,182.55",  c:"+2.40%",positive:true  },
+  { s:"RELIANCE",  v:"2,941.30",  c:"-0.81%",positive:false },
+  { s:"HDFC BANK", v:"1,762.10",  c:"+1.12%",positive:true  },
+  { s:"INFOSYS",   v:"1,890.75",  c:"+3.20%",positive:true  },
+  { s:"BAJFIN",    v:"7,310.00",  c:"+0.65%",positive:true  },
+  { s:"ITC",       v:"441.20",    c:"+0.38%",positive:true  },
+  { s:"WIPRO",     v:"462.35",    c:"-0.44%",positive:false },
+  { s:"GOLD",      v:"₹71,200",   c:"+0.50%",positive:true  },
+  { s:"USD/INR",   v:"83.47",     c:"-0.11%",positive:false },
+  { s:"NIFTY IT",  v:"36,420",    c:"+2.10%",positive:true  },
+];
+
+const AI_SYS = `You are the Smart Investor AI   a multi-agent system for Indian retail investors. 5 agents: Data, Analysis, Decision, Explanation, Alert. Always respond as an Indian retail investor's advisor. Use ₹. Reference NSE/BSE, mutual funds, tax rules (80C, LTCG, STCG), SEBI regulations. Be conversational, avoid jargon. Give specific actionable advice in 3-5 sentences max. Use bullet points for lists.`;
+
+/* ═══════════════════════════════════════════════════════════
+   GLOBAL STYLES
+═══════════════════════════════════════════════════════════ */
+const CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  @keyframes matrixFall    { 0%{transform:translateY(-100%);opacity:0} 5%{opacity:1} 85%{opacity:.6} 100%{transform:translateY(110vh);opacity:0} }
+  @keyframes tickerMove    { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
+  @keyframes revealUp      { from{opacity:0;transform:translateY(30px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes shimmer       { 0%{background-position:0% center} 100%{background-position:300% center} }
+  @keyframes livePulse     { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.35;transform:scale(.75)} }
+  @keyframes dotBounce     { 0%,100%{opacity:.25;transform:scale(.7)} 50%{opacity:1;transform:scale(1)} }
+  @keyframes fadeIn        { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes slideIn       { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:translateX(0)} }
+  @keyframes popIn         { from{opacity:0;transform:scale(.92)} to{opacity:1;transform:scale(1)} }
+
+  .r1{animation:revealUp .7s ease .05s both}
+  .r2{animation:revealUp .7s ease .18s both}
+  .r3{animation:revealUp .7s ease .30s both}
+  .r4{animation:revealUp .7s ease .42s both}
+  .r5{animation:revealUp .7s ease .54s both}
+  .r6{animation:revealUp .7s ease .66s both}
+  .r7{animation:revealUp .7s ease .78s both}
+
+  .hl {
+    background: linear-gradient(90deg,#10b981,#60a5fa,#a78bfa,#f59e0b,#10b981,#34d399);
+    background-size: 300% auto;
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shimmer 7s linear infinite;
+  }
+
+  .stat-card { transition: transform .2s ease, box-shadow .2s ease; }
+  .stat-card:hover { transform: translateY(-5px); box-shadow: 0 20px 40px rgba(16,185,129,.12) !important; }
+
+  .cta-main {
+    font-family: 'Syne', sans-serif; font-weight: 700;
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: #fff; border: none; cursor: pointer;
+    transition: all .22s ease;
+  }
+  .cta-main:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 14px 40px rgba(16,185,129,.45);
+    background: linear-gradient(135deg, #0fd49a, #10b981);
+  }
+  .cta-out {
+    font-family: 'Syne', sans-serif;
+    background: rgba(255,255,255,.04);
+    color: rgba(255,255,255,.75);
+    border: 1px solid rgba(255,255,255,.12);
+    cursor: pointer; transition: all .22s ease;
+    backdrop-filter: blur(12px);
+  }
+  .cta-out:hover {
+    background: rgba(255,255,255,.09);
+    border-color: rgba(255,255,255,.3);
+    color: #fff;
+  }
+  .nav-pill {
+    font-family:'Syne',sans-serif; font-size:13px;
+    background:transparent; border:1px solid transparent;
+    color:rgba(255,255,255,.5); cursor:pointer;
+    transition: color .18s, background .18s;
+    border-radius: 20px; padding: 5px 14px;
+  }
+  .nav-pill:hover { color:rgba(255,255,255,.88); }
+  .nav-pill.active {
+    background: rgba(16,185,129,.13);
+    border-color: rgba(16,185,129,.35);
+    color: #10b981;
+  }
+  .feature-pill { transition: border-color .2s, transform .2s; }
+  .feature-pill:hover { border-color: rgba(16,185,129,.35) !important; transform: translateY(-2px); }
+
+  .opp-card { transition: transform .18s, box-shadow .18s; }
+  .opp-card:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(16,185,129,.08); }
+
+  .tab-btn { transition: all .15s; }
+  .tab-btn:hover { background: rgba(255,255,255,.04) !important; }
+
+  .alert-row { transition: all .15s; }
+  .alert-row:hover { background: rgba(255,255,255,.02) !important; }
+
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.65);
+    backdrop-filter: blur(6px); z-index: 1000;
+    display: flex; align-items: center; justify-content: center;
+    animation: fadeIn .2s ease;
+  }
+  .modal-box {
+    background: #0f1929; border: 1px solid rgba(148,163,184,.18);
+    border-radius: 16px; padding: 28px 32px; width: 100%; max-width: 480px;
+    animation: popIn .22s ease;
+    box-shadow: 0 32px 80px rgba(0,0,0,.6);
+  }
+  .research-modal {
+    max-width: 600px; max-height: 80vh; overflow-y: auto;
+  }
+
+  input:focus, textarea:focus, select:focus {
+    outline: none !important;
+    border-color: rgba(16,185,129,.45) !important;
+    box-shadow: 0 0 0 3px rgba(16,185,129,.08) !important;
+  }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(148,163,184,.2); border-radius: 4px; }
+`;
+
+/* ═══════════════════════════════════════════════════════════
+   MATRIX RAIN
+═══════════════════════════════════════════════════════════ */
+const MatrixRain = () => {
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    const canvas = canvasRef.current; if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const resize = () => { canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; };
+    resize(); window.addEventListener("resize", resize);
+    const CHARS = "₹%+-.0123456789ABCNSX� �SIPNSEBTSETF";
+    let cols = Math.floor(canvas.width / 20);
+    let drops = Array.from({ length: cols }, () => Math.random() * -40);
+    const speeds = Array.from({ length: cols }, () => .22 + Math.random() * .5);
+    let raf;
+    const draw = () => {
+      ctx.fillStyle = "rgba(6,13,26,.14)"; ctx.fillRect(0,0,canvas.width,canvas.height);
+      cols = Math.floor(canvas.width / 20);
+      while (drops.length < cols) { drops.push(0); speeds.push(.3 + Math.random() * .4); }
+      for (let i = 0; i < cols; i++) {
+        const ch = CHARS[Math.floor(Math.random() * CHARS.length)];
+        ctx.font = `${10 + Math.floor(Math.random()*4)}px 'JetBrains Mono',monospace`;
+        ctx.fillStyle = `rgba(16,185,129,${.12 + Math.random()*.5})`;
+        ctx.fillText(ch, i*20, drops[i]*20);
+        if (drops[i]*20 > canvas.height && Math.random() > .977) drops[i] = 0;
+        drops[i] += speeds[i];
+      }
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
+  }, []);
+  return <canvas ref={canvasRef} style={{ position:"absolute",inset:0,width:"100%",height:"100%",display:"block" }}/>;
+};
+
+/* ═══════════════════════════════════════════════════════════
+   TICKER STRIP
+═══════════════════════════════════════════════════════════ */
+const TickerStrip = () => {
+  const items = [...TICKER_DATA, ...TICKER_DATA, ...TICKER_DATA];
+  return (
+    <div style={{ position:"relative",height:34,overflow:"hidden",background:"rgba(5,12,22,.9)",backdropFilter:"blur(16px)",borderBottom:"1px solid rgba(16,185,129,.15)",display:"flex",alignItems:"center",zIndex:20 }}>
+      <div style={{ position:"absolute",left:0,top:0,bottom:0,width:48,background:"linear-gradient(90deg,rgba(5,12,22,1),transparent)",zIndex:2,pointerEvents:"none" }}/>
+      <div style={{ position:"absolute",right:0,top:0,bottom:0,width:48,background:"linear-gradient(270deg,rgba(5,12,22,1),transparent)",zIndex:2,pointerEvents:"none" }}/>
+      <div style={{ display:"flex",animation:"tickerMove 36s linear infinite",whiteSpace:"nowrap",willChange:"transform" }}>
+        {items.map((t,i) => (
+          <span key={i} style={{ display:"inline-flex",alignItems:"center",gap:6,padding:"0 18px",fontFamily:"'JetBrains Mono',monospace",fontSize:11 }}>
+            <span style={{ color:"rgba(148,163,184,.55)",letterSpacing:".5px",fontSize:9.5 }}>{t.s}</span>
+            <span style={{ color:"rgba(255,255,255,.85)",fontWeight:500 }}>{t.v}</span>
+            <span style={{ color:t.positive?T.green:T.red,fontWeight:700 }}>{t.c}</span>
+            <span style={{ color:"rgba(148,163,184,.15)",fontSize:16 }}>·</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════
+   SHARED PRIMITIVES
+═══════════════════════════════════════════════════════════ */
+const Card = ({ children, style={}, glow, onClick, className="" }) => (
+  <div className={className} onClick={onClick} style={{ background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:20,boxShadow:glow?`0 0 0 1px ${T.green}28,0 8px 32px rgba(16,185,129,.05)`:"none",transition:"all .2s",cursor:onClick?"pointer":"default",...style }}>{children}</div>
+);
+const MetricCard = ({ label, value, sub, color, icon, trend }) => (
+  <Card style={{ padding:"16px 20px" }}>
+    <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start" }}>
+      <div>
+        <p style={{ color:T.muted,fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:".8px",marginBottom:6,fontFamily:"'JetBrains Mono',monospace" }}>{label}</p>
+        <p style={{ color:"white",fontSize:24,fontWeight:700,letterSpacing:"-1px",marginBottom:2,fontFamily:"'Cormorant Garamond',serif" }}>{value}</p>
+        {sub && <p style={{ color:trend==="up"?T.green:trend==="down"?T.red:T.muted,fontSize:12 }}>{sub}</p>}
+      </div>
+      <div style={{ width:40,height:40,borderRadius:10,background:`${color||T.green}1e`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18 }}>{icon}</div>
+    </div>
+  </Card>
+);
+const SigBadge = ({ signal }) => {
+  const MAP = { BUY:{bg:"rgba(16,185,129,.14)",c:T.green},SELL:{bg:"rgba(239,68,68,.14)",c:T.red},HOLD:{bg:"rgba(245,158,11,.14)",c:T.gold},ACCUMULATE:{bg:"rgba(59,130,246,.14)",c:T.blue},SUBSCRIBE:{bg:"rgba(139,92,246,.14)",c:T.purple},INVEST:{bg:"rgba(16,185,129,.14)",c:T.green} };
+  const s = MAP[signal]||MAP.HOLD;
+  return <span style={{ background:s.bg,color:s.c,fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:6,letterSpacing:".5px",fontFamily:"'JetBrains Mono',monospace" }}>{signal}</span>;
+};
+const AlertIcon = ({ type }) => {
+  const MAP = { warning:{ic:"",c:T.gold,bg:"rgba(245,158,11,.1)"},opportunity:{ic:"",c:T.green,bg:"rgba(16,185,129,.1)"},info:{ic:"",c:T.blue,bg:"rgba(59,130,246,.1)"},success:{ic:"",c:T.green,bg:"rgba(16,185,129,.1)"} };
+  const s = MAP[type]||MAP.info;
+  return <div style={{ width:32,height:32,borderRadius:8,background:s.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,color:s.c,flexShrink:0 }}>{s.ic}</div>;
+};
+const RiskGauge = ({ score }) => {
+  const ang = (score/100)*180-90;
+  const col = score<35?T.green:score<65?T.gold:T.red;
+  const lbl = score<35?"Conservative":score<65?"Moderate":"Aggressive";
+  return (
+    <div style={{ textAlign:"center" }}>
+      <svg viewBox="0 0 200 110" style={{ width:"100%",maxWidth:220 }}>
+        <defs><linearGradient id="rg2" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stopColor={T.green}/><stop offset="50%" stopColor={T.gold}/><stop offset="100%" stopColor={T.red}/></linearGradient></defs>
+        <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="url(#rg2)" strokeWidth="14" strokeLinecap="round"/>
+        <line x1="100" y1="100" x2={100+60*Math.cos((ang*Math.PI)/180)} y2={100+60*Math.sin((ang*Math.PI)/180)} stroke={col} strokeWidth="3" strokeLinecap="round"/>
+        <circle cx="100" cy="100" r="6" fill={col}/>
+        <text x="100" y="80" textAnchor="middle" fill="white" fontSize="20" fontWeight="700">{score}</text>
+        <text x="100" y="95" textAnchor="middle" fill={T.muted} fontSize="9">RISK SCORE</text>
+      </svg>
+      <p style={{ color:col,fontSize:13,fontWeight:600,marginTop:-8,fontFamily:"'Syne',sans-serif" }}>{lbl} Risk</p>
+    </div>
+  );
+};
+const DonutChart = ({ data }) => {
+  const ref = useRef(null), inst = useRef(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    const load = () => {
+      if (!window.Chart) return setTimeout(load,100);
+      if (inst.current) inst.current.destroy();
+      inst.current = new window.Chart(ref.current, { type:"doughnut", data:{ labels:data.map(d=>d.name), datasets:[{ data:data.map(d=>d.alloc), backgroundColor:["#10b981","#3b82f6","#f59e0b","#8b5cf6","#ef4444","#06b6d4","#ec4899"], borderWidth:0, borderRadius:3, hoverOffset:6 }] }, options:{ responsive:true,maintainAspectRatio:false,cutout:"68%",plugins:{ legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw}%`}} } } });
+    };
+    if (!window.Chart) { const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js";s.onload=load;document.head.appendChild(s); } else load();
+    return () => { if (inst.current) inst.current.destroy(); };
+  }, [data]);
+  return <div style={{ position:"relative",height:200 }}><canvas ref={ref}/></div>;
+};
+const LineChart = () => {
+  const ref = useRef(null), inst = useRef(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    const load = () => {
+      if (!window.Chart) return setTimeout(load,100);
+      if (inst.current) inst.current.destroy();
+      inst.current = new window.Chart(ref.current, { type:"line", data:{ labels:["Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar"], datasets:[ { label:"Portfolio",data:[420000,435000,428000,448000,462000,455000,471000,480000,488000,476000,495000,500000],borderColor:"#10b981",backgroundColor:"rgba(16,185,129,.06)",fill:true,tension:.4,pointRadius:0,borderWidth:2 }, { label:"Nifty 50",data:[400000,410000,405000,415000,422000,418000,428000,432000,438000,430000,442000,448000],borderColor:"#3b82f6",backgroundColor:"transparent",fill:false,tension:.4,pointRadius:0,borderWidth:1.5,borderDash:[4,4] } ] }, options:{ responsive:true,maintainAspectRatio:false,interaction:{mode:"index",intersect:false},plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ₹${(c.raw/1000).toFixed(0)}K`}}},scales:{ x:{grid:{color:"rgba(255,255,255,.035)"},ticks:{color:"#64748b",font:{size:11}}},y:{grid:{color:"rgba(255,255,255,.035)"},ticks:{color:"#64748b",callback:v=>`₹${v/1000}K`}} } } });
+    };
+    if (!window.Chart) { const s=document.createElement("script");s.src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js";s.onload=load;document.head.appendChild(s); } else load();
+    return () => { if (inst.current) inst.current.destroy(); };
+  }, []);
+  return <div style={{ position:"relative",height:220 }}><canvas ref={ref}/></div>;
+};
+
+/* ═══════════════════════════════════════════════════════════
+   MODAL
+═══════════════════════════════════════════════════════════ */
+const Modal = ({ title, onClose, children, wide }) => (
+  <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className={`modal-box${wide?" research-modal":""}`} style={{ fontFamily:"'Syne',sans-serif" }}>
+      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20 }}>
+        <h2 style={{ color:"white",fontSize:18,fontWeight:700,fontFamily:"'Cormorant Garamond',serif" }}>{title}</h2>
+        <button onClick={onClose} style={{ background:"transparent",border:"none",color:T.muted,fontSize:20,cursor:"pointer",lineHeight:1,padding:"0 4px" }}></button>
+      </div>
+      {children}
+    </div>
+  </div>
+);
+
+/* ═══════════════════════════════════════════════════════════
+   LANDING PAGE
+═══════════════════════════════════════════════════════════ */
+const Landing = ({ onEnter, onNavigate }) => {
+  const STATS = [
+    { ic:"",v:"₹840Cr+",l:"Portfolio Tracked",col:T.green, tab:"portfolio" },
+    { ic:"",v:"87.3%",  l:"AI Accuracy",      col:T.gold,  tab:"chat"      },
+    { ic:"",v:"2.4L+",  l:"Retail Investors",  col:T.blue,  tab:"dashboard" },
+    { ic:"",v:"18M+",   l:"Alerts Generated",  col:T.purple,tab:"alerts"    },
+  ];
+  const FEATURES = [
+    { ic:"",t:"Real-time NSE/BSE",  d:"BUY · HOLD · SELL signals across your entire watchlist, live",             tab:"radar"     },
+    { ic:"",t:"Risk Intelligence",  d:"Sector concentration alerts, diversification scores & SEBI guidance",       tab:"portfolio" },
+    { ic:"",t:"Tax Optimiser",      d:"80C, LTCG & STCG planning with ELSS SIP recommendations",                  tab:"chat"      },
+  ];
+  const AGENTS = [" Data"," Analysis"," Decision"," Explanation"," Alert"];
+  return (
+    <div style={{ minHeight:"100vh",background:T.bg,position:"relative",overflow:"hidden",fontFamily:"'Syne',sans-serif" }}>
+      <style>{CSS}</style>
+      <div style={{ position:"fixed",inset:0,zIndex:0 }}>
+        <MatrixRain/>
+        <div style={{ position:"absolute",inset:0,background:"radial-gradient(ellipse 80% 65% at 50% 42%,rgba(6,13,26,.22) 0%,rgba(6,13,26,.7) 55%,rgba(6,13,26,.97) 100%)" }}/>
+        <div style={{ position:"absolute",inset:0,background:"linear-gradient(180deg,rgba(6,13,26,.88) 0%,rgba(6,13,26,.04) 22%,transparent 48%,rgba(6,13,26,.6) 82%,rgba(6,13,26,1) 100%)" }}/>
+        <div style={{ position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(16,185,129,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(16,185,129,.022) 1px,transparent 1px)",backgroundSize:"56px 56px" }}/>
+        <div style={{ position:"absolute",top:"38%",left:"50%",transform:"translate(-50%,-50%)",width:700,height:420,borderRadius:"50%",background:"radial-gradient(ellipse,rgba(16,185,129,.06) 0%,transparent 68%)",pointerEvents:"none" }}/>
+      </div>
+      <nav style={{ position:"relative",zIndex:30,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 48px",height:66,background:"rgba(6,13,26,.68)",backdropFilter:"blur(20px)",borderBottom:"1px solid rgba(16,185,129,.1)" }}>
+        <div style={{ display:"flex",alignItems:"center",gap:11 }}>
+          <div style={{ width:38,height:38,borderRadius:11,background:"linear-gradient(135deg,#10b981,#3b82f6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:900,color:"white",boxShadow:"0 0 24px rgba(16,185,129,.42)",fontFamily:"'Cormorant Garamond',serif" }}>₹</div>
+          <div>
+            <div style={{ color:"white",fontWeight:800,fontSize:17,letterSpacing:"-.3px",fontFamily:"'Cormorant Garamond',serif",lineHeight:1.1 }}>Smart<span style={{color:T.green}}>Investor</span> AI</div>
+            <div style={{ color:"rgba(148,163,184,.52)",fontSize:8.5,letterSpacing:"2px",textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace" }}>Economic Times · AI Lab</div>
+          </div>
+        </div>
+        <div style={{ display:"flex",alignItems:"center",gap:2 }}>
+          {[{l:"Home",tab:null},{l:"Trade ▾",tab:"dashboard"},{l:"Platforms ▾",tab:"portfolio"},{l:"Market ▾",tab:"radar"},{l:"Resources ▾",tab:"chat"},{l:"Company ▾",tab:"alerts"}].map(({l,tab},i)=>(
+            <button key={l} className={`nav-pill${i===0?" active":""}`} onClick={()=>tab?onNavigate(tab):null}>{l}</button>
+          ))}
+        </div>
+        <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+          <div style={{ display:"flex",alignItems:"center",gap:7,background:"rgba(16,185,129,.08)",border:"1px solid rgba(16,185,129,.22)",borderRadius:20,padding:"5px 13px" }}>
+            <div style={{ width:7,height:7,borderRadius:"50%",background:T.green,animation:"livePulse 2s infinite" }}/>
+            <span style={{ color:T.green,fontSize:10.5,fontWeight:700,letterSpacing:"1px",fontFamily:"'JetBrains Mono',monospace" }}>MARKETS LIVE</span>
+          </div>
+          <button className="cta-out" onClick={()=>onNavigate("portfolio")} style={{ padding:"8px 17px",borderRadius:8,fontSize:13 }}>Risk-Free Account � </button>
+          <button className="cta-main" onClick={onEnter} style={{ padding:"9px 22px",borderRadius:9,fontSize:13,letterSpacing:".3px" }}>Start Trading →</button>
+        </div>
+      </nav>
+      <div style={{ position:"relative",zIndex:30 }}><TickerStrip/></div>
+      <div style={{ position:"relative",zIndex:20,display:"flex",flexDirection:"column",alignItems:"center",padding:"78px 24px 64px",textAlign:"center" }}>
+        <h1 className="r2" style={{ fontFamily:"'Cormorant Garamond',serif",fontSize:"clamp(46px,6vw,82px)",fontWeight:700,lineHeight:1.05,letterSpacing:"-2.5px",color:"white",maxWidth:860,marginBottom:10 }}>
+          Your Gateway to<br/><span className="hl">Global Financial</span><br/>Markets
+        </h1>
+        <p className="r3" style={{ color:"rgba(148,163,184,.82)",fontSize:16,lineHeight:1.8,maxWidth:500,marginBottom:40,fontWeight:400 }}>
+          Trade NSE · BSE stocks, mutual funds &amp; ETFs   with institutional-grade AI, tight spreads, and SEBI-compliant local insights.
+        </p>
+        <div className="r4" style={{ display:"flex",gap:14,marginBottom:56,justifyContent:"center",flexWrap:"wrap" }}>
+          <button className="cta-main" onClick={onEnter} style={{ padding:"16px 44px",borderRadius:10,fontSize:15,letterSpacing:".5px",boxShadow:"0 8px 32px rgba(16,185,129,.34)" }}>Open Account →</button>
+          <button className="cta-out" onClick={()=>onNavigate("radar")} style={{ padding:"16px 30px",borderRadius:10,fontSize:15 }}>Explore Markets � </button>
+        </div>
+        <div className="r4" style={{ display:"flex",gap:12,marginBottom:52,flexWrap:"wrap",justifyContent:"center" }}>
+          {FEATURES.map((f,i)=>(
+
+            <div key={i} className="feature-pill" onClick={()=>onNavigate(f.tab)} style={{ display:"flex",alignItems:"flex-start",gap:11,background:"rgba(10,18,34,.75)",border:"1px solid rgba(148,163,184,.1)",borderRadius:12,padding:"14px 18px",backdropFilter:"blur(16px)",minWidth:228,textAlign:"left",cursor:"pointer" }}>
+              <span style={{ fontSize:22,marginTop:1 }}>{f.ic}</span>
+              <div>
+                <div style={{ color:"white",fontWeight:700,fontSize:13,marginBottom:4,fontFamily:"'Syne',sans-serif" }}>{f.t}</div>
+                <div style={{ color:"rgba(148,163,184,.62)",fontSize:11.5,lineHeight:1.5 }}>{f.d}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="r5" style={{ display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,maxWidth:900,width:"100%",marginBottom:56 }}>
+          {STATS.map((s,i)=>(
+            <div key={i} className="stat-card" onClick={()=>onNavigate(s.tab)} style={{ background:"rgba(9,16,30,.76)",border:`1px solid ${s.col}1a`,borderRadius:14,padding:"22px 20px 18px",backdropFilter:"blur(18px)",textAlign:"left",position:"relative",overflow:"hidden",cursor:"pointer" }}>
+              <div style={{ position:"absolute",top:0,left:0,right:0,height:2,background:`linear-gradient(90deg,transparent,${s.col}70,transparent)` }}/>
+              <div style={{ fontSize:22,marginBottom:10 }}>{s.ic}</div>
+              <div style={{ color:s.col,fontSize:28,fontWeight:700,fontFamily:"'Cormorant Garamond',serif",letterSpacing:"-.5px",lineHeight:1 }}>{s.v}</div>
+              <div style={{ color:"rgba(148,163,184,.55)",fontSize:10,letterSpacing:".8px",textTransform:"uppercase",marginTop:6,fontFamily:"'JetBrains Mono',monospace" }}>{s.l}</div>
+            </div>
+          ))}
+        </div>
+        <div className="r6" onClick={()=>onNavigate("chat")} style={{ display:"flex",alignItems:"center",flexWrap:"wrap",justifyContent:"center",background:"rgba(9,16,30,.6)",border:"1px solid rgba(16,185,129,.1)",borderRadius:30,padding:"10px 24px",marginBottom:28,backdropFilter:"blur(14px)",gap:0,cursor:"pointer",transition:"border-color .2s" }}>
+          <span style={{ color:"rgba(148,163,184,.42)",fontSize:9.5,letterSpacing:"1.5px",textTransform:"uppercase",fontFamily:"'JetBrains Mono',monospace",marginRight:14 }}>POWERED BY</span>
+          {AGENTS.map((a,i)=>(
+            <span key={i} style={{ display:"inline-flex",alignItems:"center" }}>
+              <span style={{ color:"rgba(148,163,184,.72)",fontSize:12,padding:"0 11px",whiteSpace:"nowrap" }}>{a}</span>
+              {i<AGENTS.length-1 && <span style={{ color:"rgba(16,185,129,.2)",fontSize:18 }}>|</span>}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════
+   APP NAVBAR
+═══════════════════════════════════════════════════════════ */
+const AppNav = ({ tab, setTab, alerts, profile, dbStatus, onReset }) => {
+  const unread = alerts.filter(a=>!a.read).length;
+  const [showReset,setShowReset] = useState(false);
+  const TABS = [{ id:"dashboard",l:"Dashboard",ic:"� �" },{ id:"portfolio",l:"Portfolio",ic:"� �" },{ id:"chat",l:"AI Chat",ic:"� �" },{ id:"radar",l:"Radar",ic:"� �" },{ id:"alerts",l:"Alerts",ic:"" }];
+  return (
+    <nav style={{ background:"#08111f",borderBottom:`1px solid ${T.border}`,padding:"0 24px",display:"flex",alignItems:"center",justifyContent:"space-between",height:60,position:"sticky",top:0,zIndex:100 }}>
+      {showReset && (
+        <div className="modal-overlay" onClick={()=>setShowReset(false)}>
+          <div className="modal-box" style={{ fontFamily:"'Syne',sans-serif" }} onClick={e=>e.stopPropagation()}>
+            <h2 style={{ color:"white",fontSize:18,fontWeight:700,fontFamily:"'Cormorant Garamond',serif",marginBottom:10 }}>Reset All Data?</h2>
+            <p style={{ color:T.muted,fontSize:13,lineHeight:1.6,marginBottom:22 }}>This will permanently delete your profile, portfolio, alerts, watchlist and chat history from the database. You'll be taken back to the landing page.</p>
+            <div style={{ display:"flex",gap:10 }}>
+              <button onClick={()=>setShowReset(false)} style={{ flex:1,padding:"11px",background:"transparent",border:`1px solid ${T.border}`,color:T.muted,borderRadius:9,fontSize:13,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>Cancel</button>
+              <button onClick={()=>{ onReset(); setShowReset(false); }} style={{ flex:1,padding:"11px",background:"rgba(239,68,68,.14)",border:`1px solid ${T.red}44`,color:T.red,borderRadius:9,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>Reset Everything</button>
+            </div>
+          </div>
+        </div>
+      )}
+      <div style={{ display:"flex",alignItems:"center",gap:32 }}>
+        <div style={{ display:"flex",alignItems:"center",gap:9 }}>
+          <div style={{ width:28,height:28,background:`linear-gradient(135deg,${T.green},${T.blue})`,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,color:"white",fontFamily:"'Cormorant Garamond',serif" }}>₹</div>
+          <span style={{ color:"white",fontWeight:800,fontSize:15,fontFamily:"'Cormorant Garamond',serif" }}>SmartInvestor<span style={{color:T.green}}>AI</span></span>
+        </div>
+        <div style={{ display:"flex",gap:4 }}>
+          {TABS.map(t=>(
+            <button key={t.id} className="tab-btn" onClick={()=>setTab(t.id)} style={{ background:tab===t.id?"rgba(16,185,129,.11)":"transparent",border:tab===t.id?`1px solid ${T.green}38`:"1px solid transparent",color:tab===t.id?T.green:T.muted,padding:"6px 14px",borderRadius:8,fontSize:13,cursor:"pointer",fontWeight:tab===t.id?600:400,fontFamily:"'Syne',sans-serif",position:"relative" }}>
+              {t.ic} {t.l}
+              {t.id==="alerts" && unread>0 && <span style={{ position:"absolute",top:2,right:4,background:T.red,color:"white",fontSize:8,fontWeight:700,width:14,height:14,borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center" }}>{unread}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+        <DbBadge status={dbStatus}/>
+        <div style={{ display:"flex",alignItems:"center",gap:6,background:"rgba(16,185,129,.06)",border:"1px solid rgba(16,185,129,.18)",borderRadius:16,padding:"4px 11px" }}>
+          <div style={{ width:6,height:6,borderRadius:"50%",background:T.green,animation:"livePulse 2s infinite" }}/>
+          <span style={{ color:T.green,fontSize:10,fontWeight:700,fontFamily:"'JetBrains Mono',monospace" }}>LIVE</span>
+        </div>
+        {profile && (
+          <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+            <div style={{ width:32,height:32,borderRadius:"50%",background:`linear-gradient(135deg,${T.green},${T.blue})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"white",cursor:"pointer",title:"Reset data" }} onClick={()=>setShowReset(true)} title="Account settings">{profile.name.charAt(0)}</div>
+            <span style={{ color:"white",fontSize:13,fontFamily:"'Syne',sans-serif" }}>{profile.name.split(" ")[0]}</span>
+          </div>
+        )}
+      </div>
+    </nav>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════
+   ONBOARDING
+═══════════════════════════════════════════════════════════ */
+const Onboarding = ({ onComplete, onBack }) => {
+  const [step,setStep] = useState(1);
+  const [form,setForm] = useState({ name:"",age:"",income:"",risk:"",goals:[] });
+  const GOALS = ["Wealth Creation","Retirement","Tax Saving","Child Education","Emergency Fund"];
+  const upd = (k,v) => setForm(f=>({...f,[k]:v}));
+  const tog = g => setForm(f=>({...f,goals:f.goals.includes(g)?f.goals.filter(x=>x!==g):[...f.goals,g]}));
+  return (
+    <div style={{ minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"'Syne',sans-serif" }}>
+      <style>{CSS}</style>
+      <div style={{ width:"100%",maxWidth:480 }}>
+        <div style={{ textAlign:"center",marginBottom:36 }}>
+          <div style={{ width:56,height:56,background:`linear-gradient(135deg,${T.green},${T.blue})`,borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,margin:"0 auto 14px",boxShadow:`0 0 40px ${T.green}40`,color:"white",fontWeight:900,fontFamily:"'Cormorant Garamond',serif" }}>₹</div>
+          <h1 style={{ color:"white",fontSize:28,fontWeight:700,marginBottom:6,fontFamily:"'Cormorant Garamond',serif" }}>Smart<span style={{color:T.green}}>Investor</span> AI</h1>
+          <p style={{ color:T.muted,fontSize:13 }}>Your personal AI-powered investment advisor</p>
+        </div>
+        <Card glow style={{ padding:32 }}>
+          <button onClick={onBack} style={{ background:"transparent",border:"none",color:T.muted,fontSize:12,cursor:"pointer",marginBottom:10,fontFamily:"'Syne',sans-serif" }}>← Back to Home</button>
+          <div style={{ display:"flex",gap:6,marginBottom:30 }}>
+            {[1,2,3].map(s=><div key={s} style={{ flex:1,height:3,borderRadius:4,background:s<=step?T.green:T.border,transition:"background .3s" }}/>)}
+          </div>
+          {step===1 && <>
+            <h2 style={{ color:"white",fontSize:19,fontWeight:700,marginBottom:4,fontFamily:"'Cormorant Garamond',serif" }}>Tell us about yourself</h2>
+            <p style={{ color:T.muted,fontSize:13,marginBottom:22 }}>We use this to personalise your investment advice</p>
+            {[["Full Name","name","Rahul Sharma","text"],["Age","age","28","number"],["Monthly Income (₹)","income","75000","number"]].map(([lb,k,ph,t])=>(
+              <div key={k} style={{ marginBottom:14 }}>
+                <label style={{ color:T.muted,fontSize:11,fontWeight:600,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:".6px" }}>{lb}</label>
+                <input type={t} placeholder={ph} value={form[k]} onChange={e=>upd(k,e.target.value)} style={{ width:"100%",background:"rgba(255,255,255,.04)",border:`1px solid ${T.border}`,borderRadius:9,padding:"10px 13px",color:"white",fontSize:14,outline:"none",boxSizing:"border-box",fontFamily:"'Syne',sans-serif",transition:"border-color .2s" }}/>
+              </div>
+            ))}
+          </>}
+          {step===2 && <>
+            <h2 style={{ color:"white",fontSize:19,fontWeight:700,marginBottom:4,fontFamily:"'Cormorant Garamond',serif" }}>Risk Tolerance</h2>
+            <p style={{ color:T.muted,fontSize:13,marginBottom:22 }}>How comfortable are you with market fluctuations?</p>
+            {[["Low","I prefer safe investments, even if returns are low.",T.green],["Medium","I can handle some volatility for better returns.",T.gold],["High","I'm okay with high risk for potentially high returns.",T.red]].map(([lv,desc,col])=>(
+              <div key={lv} onClick={()=>upd("risk",lv)} style={{ border:`1px solid ${form.risk===lv?col+"70":T.border}`,background:form.risk===lv?col+"0e":"transparent",borderRadius:11,padding:"13px 15px",marginBottom:9,cursor:"pointer",transition:"all .15s" }}>
+                <div style={{ display:"flex",alignItems:"center",gap:10 }}>
+                  <div style={{ width:19,height:19,borderRadius:"50%",border:`2px solid ${form.risk===lv?col:T.border}`,background:form.risk===lv?col:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0 }}>
+                    {form.risk===lv && <div style={{ width:7,height:7,borderRadius:"50%",background:"white" }}/>}
+                  </div>
+                  <div>
+                    <p style={{ color:"white",fontWeight:600,fontSize:14,marginBottom:2 }}>{lv} Risk</p>
+                    <p style={{ color:T.muted,fontSize:12 }}>{desc}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </>}
+          {step===3 && <>
+            <h2 style={{ color:"white",fontSize:19,fontWeight:700,marginBottom:4,fontFamily:"'Cormorant Garamond',serif" }}>Investment Goals</h2>
+            <p style={{ color:T.muted,fontSize:13,marginBottom:22 }}>Select all that apply to you</p>
+            <div style={{ display:"flex",flexWrap:"wrap",gap:9,marginBottom:14 }}>
+              {GOALS.map(g=>(
+                <button key={g} onClick={()=>tog(g)} style={{ border:`1px solid ${form.goals.includes(g)?T.green+"70":T.border}`,background:form.goals.includes(g)?T.green+"12":"transparent",color:form.goals.includes(g)?T.green:T.muted,padding:"7px 13px",borderRadius:20,fontSize:12,cursor:"pointer",transition:"all .15s",fontFamily:"'Syne',sans-serif" }}>{g}</button>
+              ))}
+            </div>
+            <div style={{ background:"rgba(16,185,129,.06)",border:`1px solid ${T.green}1c`,borderRadius:9,padding:"11px 13px" }}>
+              <p style={{ color:T.green,fontSize:12,fontWeight:600,marginBottom:3 }}> AI Multi-Agent System Active</p>
+              <p style={{ color:T.muted,fontSize:12,lineHeight:1.6 }}>5 specialized agents will analyse your portfolio, suggest opportunities, and generate real-time alerts.</p>
+            </div>
+          </>}
+          <div style={{ display:"flex",gap:10,marginTop:22 }}>
+            {step>1 && <button onClick={()=>setStep(s=>s-1)} style={{ flex:1,padding:"12px",background:"transparent",border:`1px solid ${T.border}`,color:T.muted,borderRadius:9,fontSize:14,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>Back</button>}
+            <button onClick={()=>{
+              if(step<3){
+                if(step===1&&(!form.name||!form.age||!form.income))return alert("Please fill all fields");
+                if(step===2&&!form.risk)return alert("Please select risk tolerance");
+                setStep(s=>s+1);
+              }else{
+                if(form.goals.length===0)return alert("Select at least one goal");
+                onComplete(form);
+              }
+            }} style={{ flex:2,padding:"12px",background:`linear-gradient(135deg,${T.green},${T.greenD})`,color:"white",border:"none",borderRadius:9,fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>
+              {step<3?"Continue →":"Launch My Dashboard →"}
+            </button>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════
+   DASHBOARD
+═══════════════════════════════════════════════════════════ */
+const Dashboard = ({ profile, alerts, setTab, portfolio }) => {
+  const total = portfolio.reduce((s,h)=>s+h.value,0);
+  const dg = 12400;
+  return (
+    <div style={{ padding:24,fontFamily:"'Syne',sans-serif" }}>
+      <div style={{ marginBottom:22 }}>
+        <h1 style={{ color:"white",fontSize:22,fontWeight:700,marginBottom:4,fontFamily:"'Cormorant Garamond',serif" }}>Good morning, {profile.name.split(" ")[0]} </h1>
+        <p style={{ color:T.muted,fontSize:14 }}>Your portfolio is performing well. 2 new opportunities detected.</p>
+      </div>
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:13,marginBottom:22 }}>
+        <MetricCard label="Portfolio Value" value={`₹${(total/100000).toFixed(2)}L`} sub={`+₹${dg.toLocaleString()} today`} trend="up" icon="" color={T.green}/>
+        <MetricCard label="Day's Gain"      value={`+₹${(dg/1000).toFixed(1)}K`}     sub="+2.1% vs yesterday"     trend="up" icon="" color={T.green}/>
+        <MetricCard label="Total Returns"   value="+18.4%"                            sub="vs 14.2% Nifty 50"      trend="up" icon="" color={T.blue}/>
+        <MetricCard label="Invested"        value="₹4.25L"                            sub="Current: ₹5.00L"        trend="up" icon="₹" color={T.gold}/>
+      </div>
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr 1.2fr",gap:13,marginBottom:22 }}>
+        <Card>
+          <p style={{ color:T.muted,fontSize:11,fontWeight:600,marginBottom:14,textTransform:"uppercase",letterSpacing:".8px",fontFamily:"'JetBrains Mono',monospace" }}>Risk Analysis</p>
+          <RiskGauge score={62}/>
+          <div style={{ marginTop:11,background:"rgba(245,158,11,.07)",border:`1px solid ${T.gold}22`,borderRadius:8,padding:"10px 11px" }}>
+            <p style={{ color:T.gold,fontSize:12,fontWeight:600 }}> IT Sector Overweight</p>
+            <p style={{ color:T.muted,fontSize:11,marginTop:3 }}>Reduce IT exposure by 14% for optimal diversification</p>
+          </div>
+        </Card>
+        <Card>
+          <p style={{ color:T.muted,fontSize:11,fontWeight:600,marginBottom:11,textTransform:"uppercase",letterSpacing:".8px",fontFamily:"'JetBrains Mono',monospace" }}>Asset Allocation</p>
+          <DonutChart data={portfolio}/>
+          <div style={{ display:"flex",flexWrap:"wrap",gap:"6px 11px",marginTop:8 }}>
+            {["#10b981","#3b82f6","#f59e0b","#8b5cf6","#ef4444"].map((c,i)=>(
+              <span key={i} style={{ display:"flex",alignItems:"center",gap:4,fontSize:11,color:T.muted }}>
+                <span style={{ width:7,height:7,borderRadius:2,background:c,display:"inline-block" }}/>{["TCS","HDFC","Reliance","Infosys","Others"][i]}
+              </span>
+            ))}
+          </div>
+        </Card>
+        <Card>
+          <p style={{ color:T.muted,fontSize:11,fontWeight:600,marginBottom:11,textTransform:"uppercase",letterSpacing:".8px",fontFamily:"'JetBrains Mono',monospace" }}>AI Investment Suggestions</p>
+          <div style={{ display:"flex",flexDirection:"column",gap:9 }}>
+            {[{ic:"",t:"Reduce TCS from 25% → 15%",l:"REBALANCE",c:T.gold},{ic:"",t:"Add ₹3,000/mo SIP in Mirae ELSS",l:"TAX SAVE",c:T.blue},{ic:"",t:"Bajaj Finance breakout   consider entry",l:"BUY SIGNAL",c:T.green},{ic:"",t:"Add Gold ETF for 10% hedge",l:"DIVERSIFY",c:T.purple}].map((s,i)=>(
+              <div key={i} style={{ display:"flex",alignItems:"center",gap:9,padding:"8px 10px",background:"rgba(255,255,255,.02)",borderRadius:8,border:`1px solid ${T.border}` }}>
+                <span style={{ fontSize:15 }}>{s.ic}</span>
+                <p style={{ color:"white",fontSize:12,flex:1,lineHeight:1.4 }}>{s.t}</p>
+                <span style={{ background:s.c+"1e",color:s.c,fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,whiteSpace:"nowrap",fontFamily:"'JetBrains Mono',monospace" }}>{s.l}</span>
+              </div>
+            ))}
+          </div>
+          <button onClick={()=>setTab("chat")} style={{ width:"100%",marginTop:13,padding:"9px",background:`${T.green}12`,border:`1px solid ${T.green}2a`,color:T.green,borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>Ask AI for More Advice →</button>
+        </Card>
+      </div>
+      <Card style={{ marginBottom:22 }}>
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14 }}>
+          <p style={{ color:T.muted,fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:".8px",fontFamily:"'JetBrains Mono',monospace" }}>12-Month Performance</p>
+          <div style={{ display:"flex",gap:14 }}>
+            {[["Portfolio",T.green],["Nifty 50",T.blue]].map(([l,c])=>(
+              <span key={l} style={{ display:"flex",alignItems:"center",gap:5,fontSize:11,color:T.muted }}>
+                <span style={{ width:18,height:2,background:c,display:"inline-block" }}/>{l}
+              </span>
+            ))}
+          </div>
+        </div>
+        <LineChart/>
+        <div style={{ display:"flex",justifyContent:"space-around",marginTop:14,padding:"12px 0",borderTop:`1px solid ${T.border}` }}>
+          {[["Portfolio Return","+18.4%",T.green],["Nifty 50 Return","+12.2%",T.blue],["Alpha Generated","+6.2%",T.gold],["Sharpe Ratio","1.42","white"]].map(([l,v,c])=>(
+            <div key={l} style={{ textAlign:"center" }}>
+              <p style={{ color:T.muted,fontSize:11,marginBottom:3 }}>{l}</p>
+              <p style={{ color:c,fontSize:16,fontWeight:700,fontFamily:"'Cormorant Garamond',serif" }}>{v}</p>
+            </div>
+          ))}
+        </div>
+      </Card>
+      <div>
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12 }}>
+          <p style={{ color:T.muted,fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:".8px",fontFamily:"'JetBrains Mono',monospace" }}>Recent Alerts</p>
+          <button onClick={()=>setTab("alerts")} style={{ background:"transparent",border:"none",color:T.green,fontSize:12,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>View all →</button>
+        </div>
+        <div style={{ display:"flex",flexDirection:"column",gap:7 }}>
+          {alerts.slice(0,3).map(a=>(
+            <Card key={a.id} style={{ padding:"11px 15px",display:"flex",alignItems:"center",gap:11 }}>
+              <AlertIcon type={a.type}/>
+              <div style={{ flex:1 }}>
+                <p style={{ color:"white",fontSize:13,fontWeight:500 }}>{a.title}</p>
+                <p style={{ color:T.muted,fontSize:12,marginTop:1 }}>{a.msg}</p>
+              </div>
+              <span style={{ color:T.muted,fontSize:11,flexShrink:0,fontFamily:"'JetBrains Mono',monospace" }}>{a.time}</span>
+              {!a.read && <span style={{ width:7,height:7,borderRadius:"50%",background:T.green,flexShrink:0 }}/>}
+            </Card>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════
+   ADD HOLDING MODAL
+═══════════════════════════════════════════════════════════ */
+const AddHoldingModal = ({ onClose, onAdd }) => {
+  const [form,setForm] = useState({ name:"",type:"Stock",sector:"",value:"",alloc:"",chg:"",sig:"HOLD" });
+  const upd = (k,v) => setForm(f=>({...f,[k]:v}));
+  const inp = (k,ph,t="text") => (
+    <div style={{ marginBottom:13 }}>
+      <label style={{ color:T.muted,fontSize:11,fontWeight:600,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:".6px" }}>{ph}</label>
+      <input type={t} placeholder={ph} value={form[k]} onChange={e=>upd(k,e.target.value)}
+        style={{ width:"100%",background:"rgba(255,255,255,.04)",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 12px",color:"white",fontSize:13,boxSizing:"border-box",fontFamily:"'Syne',sans-serif",transition:"border-color .2s" }}/>
+    </div>
+  );
+  const sel = (k,opts) => (
+    <div style={{ marginBottom:13 }}>
+      <label style={{ color:T.muted,fontSize:11,fontWeight:600,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:".6px" }}>{k}</label>
+      <select value={form[k]} onChange={e=>upd(k,e.target.value)}
+        style={{ width:"100%",background:"#0f1929",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 12px",color:"white",fontSize:13,boxSizing:"border-box",fontFamily:"'Syne',sans-serif" }}>
+        {opts.map(o=><option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  );
+  return (
+    <Modal title="Add New Holding" onClose={onClose}>
+      {inp("name","Holding Name")}
+      {sel("type",["Stock","Mutual Fund","ETF","Bond","REIT","Gold"])}
+      {inp("sector","Sector (e.g. IT, Finance)")}
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10 }}>
+        <div>
+          <label style={{ color:T.muted,fontSize:11,fontWeight:600,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:".6px" }}>Value (₹)</label>
+          <input type="number" placeholder="50000" value={form.value} onChange={e=>upd("value",e.target.value)}
+            style={{ width:"100%",background:"rgba(255,255,255,.04)",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 12px",color:"white",fontSize:13,boxSizing:"border-box",fontFamily:"'Syne',sans-serif" }}/>
+        </div>
+        <div>
+          <label style={{ color:T.muted,fontSize:11,fontWeight:600,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:".6px" }}>Allocation %</label>
+          <input type="number" placeholder="10" value={form.alloc} onChange={e=>upd("alloc",e.target.value)}
+            style={{ width:"100%",background:"rgba(255,255,255,.04)",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 12px",color:"white",fontSize:13,boxSizing:"border-box",fontFamily:"'Syne',sans-serif" }}/>
+        </div>
+      </div>
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginTop:10 }}>
+        <div>
+          <label style={{ color:T.muted,fontSize:11,fontWeight:600,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:".6px" }}>Today's Change %</label>
+          <input type="number" step="0.1" placeholder="1.5" value={form.chg} onChange={e=>upd("chg",e.target.value)}
+            style={{ width:"100%",background:"rgba(255,255,255,.04)",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 12px",color:"white",fontSize:13,boxSizing:"border-box",fontFamily:"'Syne',sans-serif" }}/>
+        </div>
+        <div>
+          {sel("sig",["BUY","HOLD","SELL","ACCUMULATE"])}
+        </div>
+      </div>
+      <div style={{ display:"flex",gap:10,marginTop:20 }}>
+        <button onClick={onClose} style={{ flex:1,padding:"11px",background:"transparent",border:`1px solid ${T.border}`,color:T.muted,borderRadius:9,fontSize:13,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>Cancel</button>
+        <button onClick={()=>{
+          if(!form.name||!form.value)return alert("Please fill Name and Value");
+          onAdd({ id:Date.now(),name:form.name,type:form.type,sector:form.sector||"Other",value:parseFloat(form.value)||0,alloc:parseFloat(form.alloc)||0,chg:parseFloat(form.chg)||0,sig:form.sig });
+          onClose();
+        }} style={{ flex:2,padding:"11px",background:`linear-gradient(135deg,${T.green},${T.greenD})`,color:"white",border:"none",borderRadius:9,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>Add Holding →</button>
+      </div>
+    </Modal>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════
+   PORTFOLIO
+═══════════════════════════════════════════════════════════ */
+const Portfolio = ({ portfolio, setPortfolio }) => {
+  const [showAdd,setShowAdd] = useState(false);
+  const [deleteId,setDeleteId] = useState(null);
+  const [sortBy,setSortBy] = useState("value");
+  const [filterSig,setFilterSig] = useState("All");
+
+  const total = portfolio.reduce((s,h)=>s+h.value,0);
+  const sm = portfolio.reduce((m,h)=>{m[h.sector]=(m[h.sector]||0)+h.alloc;return m;},{});
+  const sects = Object.entries(sm).sort((a,b)=>b[1]-a[1]);
+
+  const filtered = portfolio
+    .filter(h=>filterSig==="All"||h.sig===filterSig)
+    .sort((a,b)=>sortBy==="value"?b.value-a.value:sortBy==="chg"?b.chg-a.chg:a.name.localeCompare(b.name));
+
+  return (
+    <div style={{ padding:24,fontFamily:"'Syne',sans-serif" }}>
+      {showAdd && <AddHoldingModal onClose={()=>setShowAdd(false)} onAdd={h=>setPortfolio(p=>[...p,h])}/>}
+      {deleteId && (
+        <Modal title="Remove Holding" onClose={()=>setDeleteId(null)}>
+          <p style={{ color:T.muted,fontSize:14,marginBottom:22 }}>Are you sure you want to remove <strong style={{color:"white"}}>{portfolio.find(h=>h.id===deleteId)?.name}</strong> from your portfolio?</p>
+          <div style={{ display:"flex",gap:10 }}>
+            <button onClick={()=>setDeleteId(null)} style={{ flex:1,padding:"11px",background:"transparent",border:`1px solid ${T.border}`,color:T.muted,borderRadius:9,fontSize:13,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>Cancel</button>
+            <button onClick={()=>{setPortfolio(p=>p.filter(h=>h.id!==deleteId));setDeleteId(null);}} style={{ flex:1,padding:"11px",background:"rgba(239,68,68,.14)",border:`1px solid ${T.red}44`,color:T.red,borderRadius:9,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>Remove</button>
+          </div>
+        </Modal>
+      )}
+      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:22 }}>
+        <div>
+          <h1 style={{ color:"white",fontSize:22,fontWeight:700,marginBottom:3,fontFamily:"'Cormorant Garamond',serif" }}>Portfolio Analyser</h1>
+          <p style={{ color:T.muted,fontSize:14 }}>AI-powered analysis · {portfolio.length} holdings · ₹{(total/100000).toFixed(2)}L total</p>
+        </div>
+        <div style={{ display:"flex",gap:9 }}>
+          <button onClick={()=>setShowAdd(true)} style={{ padding:"8px 15px",background:T.green+"12",border:`1px solid ${T.green}38`,color:T.green,borderRadius:8,fontSize:13,cursor:"pointer",fontWeight:600,fontFamily:"'Syne',sans-serif" }}>+ Add Holding</button>
+          <label style={{ padding:"8px 15px",background:"transparent",border:`1px solid ${T.border}`,color:T.muted,borderRadius:8,fontSize:13,cursor:"pointer",fontFamily:"'Syne',sans-serif",display:"flex",alignItems:"center",gap:6 }}>
+            📎 Upload CSV
+            <input type="file" accept=".csv" style={{ display:"none" }} onChange={e=>{
+              const file=e.target.files[0]; if(!file)return;
+              const reader=new FileReader();
+              reader.onload=ev=>{
+                const lines=ev.target.result.split("\n").filter(Boolean);
+                const newHoldings=lines.slice(1).map((l,i)=>{
+                  const [name,type,sector,value,alloc,chg,sig]=l.split(",").map(s=>s.trim());
+                  return { id:Date.now()+i,name:name||"Unknown",type:type||"Stock",sector:sector||"Other",value:parseFloat(value)||0,alloc:parseFloat(alloc)||0,chg:parseFloat(chg)||0,sig:sig||"HOLD" };
+                }).filter(h=>h.name&&h.name!=="Unknown");
+                if(newHoldings.length) setPortfolio(p=>[...p,...newHoldings]);
+                else alert("No valid holdings found. CSV format: name,type,sector,value,alloc,chg,signal");
+              };
+              reader.readAsText(file);
+              e.target.value="";
+            }}/>
+          </label>
+        </div>
+      </div>
+
+      <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:13,marginBottom:22 }}>
+        <Card>
+          <p style={{ color:T.muted,fontSize:11,fontWeight:600,marginBottom:14,textTransform:"uppercase",letterSpacing:".8px",fontFamily:"'JetBrains Mono',monospace" }}>Sector Exposure</p>
+          {sects.map(([sec,pct])=>{const w=sec==="IT"&&pct>30;return(
+            <div key={sec} style={{ marginBottom:9 }}>
+              <div style={{ display:"flex",justifyContent:"space-between",marginBottom:4 }}>
+                <span style={{ color:w?T.gold:"white",fontSize:13 }}>{sec} {w?"":""}</span>
+                <span style={{ color:T.muted,fontSize:13,fontFamily:"'JetBrains Mono',monospace" }}>{pct}%</span>
+              </div>
+              <div style={{ height:5,background:T.border,borderRadius:3 }}>
+                <div style={{ height:"100%",width:`${Math.min(pct,100)}%`,background:w?T.gold:pct>20?T.blue:T.green,borderRadius:3,transition:"width .8s" }}/>
+              </div>
+            </div>
+          );})}
+          <div style={{ background:"rgba(245,158,11,.07)",border:`1px solid ${T.gold}22`,borderRadius:8,padding:"10px 11px",marginTop:14 }}>
+            <p style={{ color:T.gold,fontSize:12,fontWeight:600 }}>Analysis Agent: Over-concentration in IT</p>
+            <p style={{ color:T.muted,fontSize:11,marginTop:3 }}>Ideal IT exposure: 15-20%. Reduce by selling partial TCS/Infosys or routing fresh SIPs elsewhere.</p>
+          </div>
+        </Card>
+        <Card>
+          <p style={{ color:T.muted,fontSize:11,fontWeight:600,marginBottom:11,textTransform:"uppercase",letterSpacing:".8px",fontFamily:"'JetBrains Mono',monospace" }}>Diversification Score</p>
+          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:14 }}>
+            {[{l:"Diversification",s:64,c:T.gold},{l:"Liquidity",s:88,c:T.green},{l:"Risk-Adj. Return",s:72,c:T.blue},{l:"Tax Efficiency",s:55,c:T.purple}].map(m=>(
+              <div key={m.l} style={{ background:"rgba(255,255,255,.02)",borderRadius:8,padding:"10px 11px" }}>
+                <p style={{ color:T.muted,fontSize:11,marginBottom:5 }}>{m.l}</p>
+                <div style={{ display:"flex",alignItems:"baseline",gap:3 }}>
+                  <span style={{ color:m.c,fontSize:20,fontWeight:700,fontFamily:"'Cormorant Garamond',serif" }}>{m.s}</span>
+                  <span style={{ color:T.muted,fontSize:11 }}>/100</span>
+                </div>
+                <div style={{ height:3,background:T.border,borderRadius:2,marginTop:5 }}>
+                  <div style={{ height:"100%",width:`${m.s}%`,background:m.c,borderRadius:2 }}/>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ background:"rgba(16,185,129,.05)",border:`1px solid ${T.green}1c`,borderRadius:8,padding:"10px 11px" }}>
+            <p style={{ color:T.green,fontSize:12,fontWeight:600 }}>Decision Agent: Suggested Rebalancing</p>
+            <p style={{ color:T.muted,fontSize:11,marginTop:3 }}>Adding 10% gold + 5% international fund would improve diversification score by ~18 points.</p>
+          </div>
+        </Card>
+      </div>
+
+      <Card>
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14 }}>
+          <p style={{ color:T.muted,fontSize:11,fontWeight:600,textTransform:"uppercase",letterSpacing:".8px",fontFamily:"'JetBrains Mono',monospace" }}>Holdings ({filtered.length})</p>
+          <div style={{ display:"flex",gap:8,alignItems:"center" }}>
+            <select value={filterSig} onChange={e=>setFilterSig(e.target.value)} style={{ background:"#0f1929",border:`1px solid ${T.border}`,borderRadius:7,padding:"5px 9px",color:T.muted,fontSize:12,fontFamily:"'Syne',sans-serif",cursor:"pointer" }}>
+              {["All","BUY","HOLD","SELL"].map(o=><option key={o} value={o}>{o}</option>)}
+            </select>
+            <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{ background:"#0f1929",border:`1px solid ${T.border}`,borderRadius:7,padding:"5px 9px",color:T.muted,fontSize:12,fontFamily:"'Syne',sans-serif",cursor:"pointer" }}>
+              <option value="value">Sort: Value</option>
+              <option value="chg">Sort: Change</option>
+              <option value="name">Sort: Name</option>
+            </select>
+          </div>
+        </div>
+        <div style={{ overflowX:"auto" }}>
+          <table style={{ width:"100%",borderCollapse:"collapse",fontSize:13 }}>
+            <thead>
+              <tr style={{ borderBottom:`1px solid ${T.border}` }}>
+                {["Name","Type","Sector","Value","Allocation","Today","AI Signal",""].map(h=>(
+                  <th key={h} style={{ padding:"8px 11px",textAlign:h==="Name"||h===""?"left":"right",color:T.muted,fontWeight:600,fontSize:10.5,textTransform:"uppercase",letterSpacing:".6px",fontFamily:"'JetBrains Mono',monospace" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((h)=>(
+                <tr key={h.id} style={{ borderBottom:`1px solid ${T.border}`,transition:"background .1s" }} onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,.02)"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <td style={{ padding:"11px",color:"white",fontWeight:500 }}>{h.name}</td>
+                  <td style={{ padding:"11px",textAlign:"right",color:T.muted }}>{h.type}</td>
+                  <td style={{ padding:"11px",textAlign:"right",color:T.muted }}>{h.sector}</td>
+                  <td style={{ padding:"11px",textAlign:"right",color:"white",fontFamily:"'JetBrains Mono',monospace" }}>₹{(h.value/1000).toFixed(0)}K</td>
+                  <td style={{ padding:"11px",textAlign:"right",color:T.muted,fontFamily:"'JetBrains Mono',monospace" }}>{h.alloc}%</td>
+                  <td style={{ padding:"11px",textAlign:"right",color:h.chg>=0?T.green:T.red,fontFamily:"'JetBrains Mono',monospace" }}>{h.chg>=0?"+":""}{h.chg}%</td>
+                  <td style={{ padding:"11px",textAlign:"right" }}><SigBadge signal={h.sig}/></td>
+                  <td style={{ padding:"11px" }}>
+                    <button onClick={()=>setDeleteId(h.id)} style={{ background:"transparent",border:`1px solid ${T.border}`,color:T.muted,borderRadius:6,padding:"3px 8px",fontSize:11,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ display:"flex",gap:11,marginTop:14,padding:"11px 0",borderTop:`1px solid ${T.border}` }}>
+          {[["Total Value",`₹${(total/100000).toFixed(2)}L`],["Holdings",portfolio.length],["BUY Signals",portfolio.filter(h=>h.sig==="BUY").length],["HOLD Signals",portfolio.filter(h=>h.sig==="HOLD").length]].map(([l,v])=>(
+            <div key={l} style={{ flex:1,textAlign:"center" }}>
+              <p style={{ color:T.muted,fontSize:11 }}>{l}</p>
+              <p style={{ color:"white",fontSize:16,fontWeight:700,fontFamily:"'Cormorant Garamond',serif" }}>{v}</p>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════
+   AI CHAT
+═══════════════════════════════════════════════════════════ */
+const Chat = ({ profile, chatMsgs, setChatMsgs }) => {
+  const WELCOME = { role:"assistant", content:`Namaste ${profile.name.split(" ")[0]}!  I'm your Smart Investor AI   powered by 5 specialized agents.\n\nI can help you with:\n• Portfolio analysis & rebalancing\n• Stock research (TCS, HDFC, Reliance...)\n• Mutual fund recommendations\n• Tax saving under Section 80C\n• SIP planning based on your ₹${Number(profile.income).toLocaleString()} income\n\nAsk me anything about your investments!` };
+  const msgs = chatMsgs.length > 0 ? chatMsgs : [WELCOME];
+  const setMsgs = setChatMsgs;
+  const [inp,setInp] = useState("");
+  const [ld,setLd] = useState(false);
+  const btm = useRef(null);
+  const SUGG = ["Where should I invest ₹5000/month?","Is TCS a good buy now?","How to save tax under 80C?","Review my portfolio risk","Best ELSS funds in India"];
+  useEffect(()=>{ btm.current?.scrollIntoView({behavior:"smooth"}); },[msgs]);
+  const send = async (t) => {
+    const msg = t||inp.trim(); if(!msg||ld)return;
+    setInp("");
+    const nm = [...msgs,{role:"user",content:msg}]; setMsgs(nm); setLd(true);
+    try {
+      const ctx = `User: Name=${profile.name},Age=${profile.age},Income=₹${Number(profile.income).toLocaleString()},Risk=${profile.risk},Goals=${profile.goals.join(",")}. Portfolio ₹5L: TCS 25%,HDFC 19%,Reliance 16%,Infosys 14%,SBI MF 12%,ELSS 8%,Gold 6%. IT overweight 39%.`;
+      const r = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:AI_SYS+"\n\n"+ctx,messages:nm.map(m=>({role:m.role,content:m.content}))})});
+      const d = await r.json();
+      setMsgs(m=>[...m,{role:"assistant",content:d.content?.[0]?.text||"Sorry, couldn't process that."}]);
+    } catch { setMsgs(m=>[...m,{role:"assistant",content:"Network error. Please try again."}]); }
+    finally { setLd(false); }
+  };
+  return (
+    <div style={{ padding:24,maxWidth:860,margin:"0 auto",fontFamily:"'Syne',sans-serif" }}>
+      <div style={{ marginBottom:18 }}>
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start" }}>
+          <h1 style={{ color:"white",fontSize:22,fontWeight:700,marginBottom:4,fontFamily:"'Cormorant Garamond',serif" }}>AI Investment Assistant</h1>
+          <button onClick={()=>setMsgs([])} style={{ background:"transparent",border:`1px solid ${T.border}`,color:T.muted,fontSize:12,padding:"5px 11px",borderRadius:7,cursor:"pointer",fontFamily:"'Syne',sans-serif" }} title="Clear chat history from DB">Clear History</button>
+        </div>
+        <div style={{ display:"flex",alignItems:"center",gap:7 }}>
+          <div style={{ width:7,height:7,borderRadius:"50%",background:T.green,animation:"livePulse 2s infinite" }}/>
+          <p style={{ color:T.muted,fontSize:13 }}>5 agents active   Data · Analysis · Decision · Explanation · Alert · <span style={{color:T.green+"99",fontSize:11}}>{msgs.length-1} messages saved</span></p>
+        </div>
+      </div>
+      <Card style={{ height:500,display:"flex",flexDirection:"column" }}>
+        <div style={{ flex:1,overflowY:"auto",paddingRight:4,display:"flex",flexDirection:"column",gap:15 }}>
+          {msgs.map((m,i)=>(
+            <div key={i} style={{ display:"flex",gap:9,flexDirection:m.role==="user"?"row-reverse":"row",animation:"fadeIn .25s ease" }}>
+              <div style={{ width:32,height:32,borderRadius:"50%",flexShrink:0,background:m.role==="user"?`linear-gradient(135deg,${T.blue},${T.purple})`:`linear-gradient(135deg,${T.green},${T.greenD})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:"white",fontFamily:"'Cormorant Garamond',serif" }}>{m.role==="user"?profile.name.charAt(0):"₹"}</div>
+              <div style={{ maxWidth:"78%",background:m.role==="user"?`${T.blue}18`:"rgba(255,255,255,.038)",border:`1px solid ${m.role==="user"?T.blue+"28":T.border}`,borderRadius:11,padding:"11px 13px" }}>
+                <p style={{ color:"white",fontSize:13,lineHeight:1.72,whiteSpace:"pre-wrap" }}>{m.content}</p>
+              </div>
+            </div>
+          ))}
+          {ld && <div style={{ display:"flex",gap:9 }}>
+            <div style={{ width:32,height:32,borderRadius:"50%",background:`linear-gradient(135deg,${T.green},${T.greenD})`,display:"flex",alignItems:"center",justifyContent:"center",color:"white",fontSize:13,fontFamily:"'Cormorant Garamond',serif" }}>₹</div>
+            <div style={{ background:"rgba(255,255,255,.038)",border:`1px solid ${T.border}`,borderRadius:11,padding:"13px 15px",display:"flex",gap:5,alignItems:"center" }}>
+              {[0,1,2].map(i=><span key={i} style={{ width:7,height:7,borderRadius:"50%",background:T.green,display:"inline-block",animation:"dotBounce 1.2s infinite",animationDelay:`${i*.2}s` }}/>)}
+            </div>
+          </div>}
+          <div ref={btm}/>
+        </div>
+        <div style={{ borderTop:`1px solid ${T.border}`,paddingTop:13,marginTop:13 }}>
+          <div style={{ display:"flex",gap:7,flexWrap:"wrap",marginBottom:11 }}>
+            {SUGG.map(s=>(
+              <button key={s} onClick={()=>send(s)} disabled={ld} style={{ background:"rgba(255,255,255,.028)",border:`1px solid ${T.border}`,color:T.muted,padding:"5px 10px",borderRadius:16,fontSize:11,cursor:ld?"not-allowed":"pointer",transition:"all .15s",fontFamily:"'Syne',sans-serif",opacity:ld?.6:1 }}
+                onMouseEnter={e=>{if(!ld){e.target.style.borderColor=T.green+"44";e.target.style.color=T.green;}}}
+                onMouseLeave={e=>{e.target.style.borderColor=T.border;e.target.style.color=T.muted;}}>{s}</button>
+            ))}
+          </div>
+          <div style={{ display:"flex",gap:8 }}>
+            <input value={inp} onChange={e=>setInp(e.target.value)} onKeyDown={e=>e.key==="Enter"&&!e.shiftKey&&send()} placeholder="Ask about stocks, mutual funds, tax saving..." style={{ flex:1,background:"rgba(255,255,255,.038)",border:`1px solid ${T.border}`,borderRadius:9,padding:"11px 13px",color:"white",fontSize:13,outline:"none",fontFamily:"'Syne',sans-serif",transition:"border-color .2s" }}/>
+            <button onClick={()=>send()} disabled={ld||!inp.trim()} style={{ padding:"11px 19px",background:ld||!inp.trim()?T.border:`linear-gradient(135deg,${T.green},${T.greenD})`,border:"none",borderRadius:9,color:"white",fontWeight:600,fontSize:13,cursor:ld||!inp.trim()?"not-allowed":"pointer",transition:"all .15s",fontFamily:"'Syne',sans-serif" }}>Send</button>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════
+   RESEARCH MODAL
+═══════════════════════════════════════════════════════════ */
+const ResearchModal = ({ opp, onClose }) => {
+  const [aiRes,setAiRes] = useState("");
+  const [loading,setLoading] = useState(true);
+  useEffect(()=>{
+    const fetch_ = async () => {
+      try {
+        const r = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:600,system:AI_SYS,messages:[{role:"user",content:`Give a detailed investment analysis for ${opp.name} (${opp.type}, ${opp.sector} sector). Signal: ${opp.sig}. Reason: ${opp.reason}. Target: ${opp.target}. Upside: ${opp.up}. Risk: ${opp.risk}. Include: 1) Why to consider, 2) Key risks, 3) Suggested entry strategy for Indian retail investor.`}]})});
+        const d = await r.json();
+        setAiRes(d.content?.[0]?.text||"Could not fetch analysis.");
+      } catch { setAiRes("Network error. Could not fetch AI analysis."); }
+      finally { setLoading(false); }
+    };
+    fetch_();
+  },[opp]);
+  return (
+    <Modal title={`Research: ${opp.name}`} onClose={onClose} wide>
+      <div style={{ display:"flex",gap:10,flexWrap:"wrap",marginBottom:18 }}>
+        <SigBadge signal={opp.sig}/>
+        <span style={{ background:T.border,color:T.muted,fontSize:11,padding:"3px 8px",borderRadius:5,fontFamily:"'JetBrains Mono',monospace" }}>{opp.type}</span>
+        <span style={{ background:T.border,color:T.muted,fontSize:11,padding:"3px 8px",borderRadius:5,fontFamily:"'JetBrains Mono',monospace" }}>{opp.sector}</span>
+        <span style={{ background:T.green+"14",color:T.green,fontSize:11,padding:"3px 8px",borderRadius:5,fontFamily:"'JetBrains Mono',monospace" }}>Target: {opp.target}</span>
+        <span style={{ background:T.blue+"14",color:T.blue,fontSize:11,padding:"3px 8px",borderRadius:5,fontFamily:"'JetBrains Mono',monospace" }}>Upside: {opp.up}</span>
+        <span style={{ background:opp.risk==="Low"?T.green+"14":opp.risk==="Medium"?T.gold+"14":T.red+"14",color:opp.risk==="Low"?T.green:opp.risk==="Medium"?T.gold:T.red,fontSize:11,padding:"3px 8px",borderRadius:5,fontFamily:"'JetBrains Mono',monospace" }}>{opp.risk} Risk</span>
+      </div>
+      <div style={{ background:"rgba(255,255,255,.03)",borderRadius:10,padding:"13px 15px",marginBottom:16,border:`1px solid ${T.border}` }}>
+        <p style={{ color:T.muted,fontSize:12,marginBottom:4,fontFamily:"'JetBrains Mono',monospace" }}>OPPORTUNITY BRIEF</p>
+        <p style={{ color:"white",fontSize:13,lineHeight:1.6 }}>{opp.reason}</p>
+      </div>
+      <div style={{ background:`${T.green}08`,border:`1px solid ${T.green}1c`,borderRadius:10,padding:"13px 15px" }}>
+        <div style={{ display:"flex",alignItems:"center",gap:7,marginBottom:10 }}>
+          <div style={{ width:6,height:6,borderRadius:"50%",background:T.green,animation:loading?"livePulse 1s infinite":"none" }}/>
+          <p style={{ color:T.green,fontSize:12,fontWeight:600,fontFamily:"'JetBrains Mono',monospace" }}>AI DEEP ANALYSIS</p>
+        </div>
+        {loading ? (
+          <div style={{ display:"flex",gap:5,alignItems:"center" }}>
+            {[0,1,2].map(i=><span key={i} style={{ width:6,height:6,borderRadius:"50%",background:T.green,display:"inline-block",animation:"dotBounce 1.2s infinite",animationDelay:`${i*.2}s` }}/>)}
+            <span style={{ color:T.muted,fontSize:12,marginLeft:6 }}>Generating analysis...</span>
+          </div>
+        ) : <p style={{ color:"white",fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap" }}>{aiRes}</p>}
+      </div>
+    </Modal>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════
+   RADAR
+═══════════════════════════════════════════════════════════ */
+const Radar = ({ opps, setOpps, setTab }) => {
+  const [researchOpp,setResearchOpp] = useState(null);
+  const [filterType,setFilterType] = useState("All");
+  const [filterRisk,setFilterRisk] = useState("All");
+  const [toast,setToast] = useState("");
+
+  const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""),2500); };
+  const toggleWatchlist = (id) => {
+    setOpps(o=>o.map(x=>x.id===id?{...x,watchlisted:!x.watchlisted}:x));
+    const opp = opps.find(x=>x.id===id);
+    showToast(opp?.watchlisted?`${opp.name} removed from watchlist`:`${opp.name} added to watchlist `);
+  };
+
+  const filtered = opps
+    .filter(o=>filterType==="All"||o.type===filterType)
+    .filter(o=>filterRisk==="All"||o.risk===filterRisk);
+
+  const types = ["All",...[...new Set(opps.map(o=>o.type))]];
+  const risks = ["All","Low","Medium","High"];
+
+  return (
+    <div style={{ padding:24,fontFamily:"'Syne',sans-serif" }}>
+      {researchOpp && <ResearchModal opp={researchOpp} onClose={()=>setResearchOpp(null)}/>}
+      {toast && (
+        <div style={{ position:"fixed",bottom:28,left:"50%",transform:"translateX(-50%)",background:"#0f1929",border:`1px solid ${T.green}44`,color:T.green,padding:"11px 20px",borderRadius:10,fontSize:13,fontWeight:600,zIndex:999,boxShadow:"0 8px 32px rgba(0,0,0,.5)",fontFamily:"'Syne',sans-serif",animation:"fadeIn .2s ease" }}>{toast}</div>
+      )}
+      <div style={{ marginBottom:22 }}>
+        <h1 style={{ color:"white",fontSize:22,fontWeight:700,marginBottom:3,fontFamily:"'Cormorant Garamond',serif" }}>Opportunity Radar</h1>
+        <p style={{ color:T.muted,fontSize:14 }}>AI-curated investment opportunities updated in real-time</p>
+      </div>
+
+      <div style={{ display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:13,marginBottom:22 }}>
+        {[["Trending","3 stocks showing bullish patterns",T.green,"","radar"],["IPO Alert","1 upcoming IPO with strong fundamentals",T.blue,"🚀","radar"],["Tax Season","ELSS window closes March 31",T.gold,"�","chat"]].map(([t,d,c,ic,tab])=>(
+          <Card key={t} style={{ padding:"15px 17px",borderColor:c+"28",cursor:"pointer" }} onClick={()=>tab==="chat"?setTab("chat"):null}>
+            <div style={{ display:"flex",gap:9,alignItems:"flex-start" }}>
+              <span style={{ fontSize:20 }}>{ic}</span>
+              <div>
+                <p style={{ color:c,fontSize:13,fontWeight:600 }}>{t}</p>
+                <p style={{ color:T.muted,fontSize:12,marginTop:3 }}>{d}</p>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      <div style={{ display:"flex",gap:8,marginBottom:16,flexWrap:"wrap" }}>
+        <span style={{ color:T.muted,fontSize:12,display:"flex",alignItems:"center" }}>Filter:</span>
+        {types.map(t=>(
+          <button key={t} onClick={()=>setFilterType(t)} style={{ padding:"5px 12px",borderRadius:16,border:`1px solid ${filterType===t?T.green+"55":T.border}`,background:filterType===t?T.green+"12":"transparent",color:filterType===t?T.green:T.muted,fontSize:12,cursor:"pointer",fontFamily:"'Syne',sans-serif",transition:"all .15s" }}>{t}</button>
+        ))}
+        <span style={{ color:T.muted,fontSize:12,display:"flex",alignItems:"center",marginLeft:8 }}>Risk:</span>
+        {risks.map(r=>(
+          <button key={r} onClick={()=>setFilterRisk(r)} style={{ padding:"5px 12px",borderRadius:16,border:`1px solid ${filterRisk===r?T.blue+"55":T.border}`,background:filterRisk===r?T.blue+"12":"transparent",color:filterRisk===r?T.blue:T.muted,fontSize:12,cursor:"pointer",fontFamily:"'Syne',sans-serif",transition:"all .15s" }}>{r}</button>
+        ))}
+      </div>
+
+      <div style={{ display:"flex",flexDirection:"column",gap:13 }}>
+        {filtered.map((o)=>(
+          <Card key={o.id} className="opp-card" style={{ padding:"17px 19px" }}>
+            <div style={{ display:"flex",alignItems:"flex-start",gap:15 }}>
+              <div style={{ width:43,height:43,borderRadius:11,background:T.cardH,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:"white",flexShrink:0,fontFamily:"'JetBrains Mono',monospace" }}>{o.name.substring(0,2)}</div>
+              <div style={{ flex:1 }}>
+                <div style={{ display:"flex",alignItems:"center",gap:7,marginBottom:5,flexWrap:"wrap" }}>
+                  <span style={{ color:"white",fontWeight:600,fontSize:15 }}>{o.name}</span>
+                  <span style={{ background:T.border,color:T.muted,fontSize:10,padding:"2px 7px",borderRadius:4 }}>{o.type}</span>
+                  <span style={{ background:T.border,color:T.muted,fontSize:10,padding:"2px 7px",borderRadius:4 }}>{o.sector}</span>
+                  <SigBadge signal={o.sig}/>
+                  {o.watchlisted && <span style={{ background:T.gold+"18",color:T.gold,fontSize:10,padding:"2px 7px",borderRadius:4,fontFamily:"'JetBrains Mono',monospace" }}>WATCHLISTED �</span>}
+                </div>
+                <p style={{ color:T.muted,fontSize:13,lineHeight:1.6 }}>{o.reason}</p>
+              </div>
+              <div style={{ textAlign:"right",flexShrink:0 }}>
+                <p style={{ color:T.green,fontSize:16,fontWeight:700,fontFamily:"'Cormorant Garamond',serif" }}>{o.up}</p>
+                <p style={{ color:T.muted,fontSize:11,marginTop:1 }}>Target: {o.target}</p>
+                <p style={{ color:o.risk==="Low"?T.green:o.risk==="Medium"?T.gold:T.red,fontSize:11,marginTop:3 }}>{o.risk} Risk</p>
+              </div>
+            </div>
+            <div style={{ marginTop:11,paddingTop:11,borderTop:`1px solid ${T.border}`,display:"flex",gap:9 }}>
+              <button onClick={()=>setResearchOpp(o)} style={{ flex:1,padding:"7px",background:T.green+"12",border:`1px solid ${T.green}28`,color:T.green,borderRadius:7,fontSize:12,cursor:"pointer",fontWeight:600,fontFamily:"'Syne',sans-serif",transition:"all .15s" }}
+                onMouseEnter={e=>e.target.style.background=T.green+"22"} onMouseLeave={e=>e.target.style.background=T.green+"12"}> Research More</button>
+              <button onClick={()=>toggleWatchlist(o.id)} style={{ flex:1,padding:"7px",background:o.watchlisted?T.gold+"12":"transparent",border:`1px solid ${o.watchlisted?T.gold+"44":T.border}`,color:o.watchlisted?T.gold:T.muted,borderRadius:7,fontSize:12,cursor:"pointer",fontFamily:"'Syne',sans-serif",transition:"all .15s" }}
+                onMouseEnter={e=>{e.target.style.borderColor=T.gold+"44";e.target.style.color=T.gold;}} onMouseLeave={e=>{e.target.style.borderColor=o.watchlisted?T.gold+"44":T.border;e.target.style.color=o.watchlisted?T.gold:T.muted;}}>
+                {o.watchlisted?"� Watchlisted":"☆ Add to Watchlist"}
+              </button>
+            </div>
+          </Card>
+        ))}
+        {filtered.length===0 && <div style={{ textAlign:"center",padding:"40px 20px",color:T.muted }}>No opportunities match your current filters.</div>}
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════
+   ALERTS PAGE
+═══════════════════════════════════════════════════════════ */
+const AlertsPage = ({ alerts, setAlerts }) => {
+  const [filter,setFilter] = useState("All");
+  const [showAdd,setShowAdd] = useState(false);
+  const [newAlert,setNewAlert] = useState({ title:"",msg:"",type:"info" });
+
+  const filtered = alerts.filter(a=>filter==="All"||(filter==="Unread"&&!a.read)||(filter==="Read"&&a.read));
+
+  const addAlert = () => {
+    if(!newAlert.title||!newAlert.msg)return;
+    setAlerts(a=>[{ id:Date.now(),type:newAlert.type,title:newAlert.title,msg:newAlert.msg,time:"Just now",read:false },...a]);
+    setNewAlert({title:"",msg:"",type:"info"});
+    setShowAdd(false);
+  };
+
+  return (
+    <div style={{ padding:24,maxWidth:720,margin:"0 auto",fontFamily:"'Syne',sans-serif" }}>
+      {showAdd && (
+        <Modal title="Add Custom Alert" onClose={()=>setShowAdd(false)}>
+          <div style={{ marginBottom:13 }}>
+            <label style={{ color:T.muted,fontSize:11,fontWeight:600,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:".6px" }}>Type</label>
+            <select value={newAlert.type} onChange={e=>setNewAlert(a=>({...a,type:e.target.value}))} style={{ width:"100%",background:"#0f1929",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 12px",color:"white",fontSize:13,fontFamily:"'Syne',sans-serif" }}>
+              <option value="info">Info</option>
+              <option value="warning">Warning</option>
+              <option value="opportunity">Opportunity</option>
+              <option value="success">Success</option>
+            </select>
+          </div>
+          <div style={{ marginBottom:13 }}>
+            <label style={{ color:T.muted,fontSize:11,fontWeight:600,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:".6px" }}>Title</label>
+            <input value={newAlert.title} onChange={e=>setNewAlert(a=>({...a,title:e.target.value}))} placeholder="Alert title" style={{ width:"100%",background:"rgba(255,255,255,.04)",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 12px",color:"white",fontSize:13,boxSizing:"border-box",fontFamily:"'Syne',sans-serif" }}/>
+          </div>
+          <div style={{ marginBottom:20 }}>
+            <label style={{ color:T.muted,fontSize:11,fontWeight:600,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:".6px" }}>Message</label>
+            <textarea value={newAlert.msg} onChange={e=>setNewAlert(a=>({...a,msg:e.target.value}))} placeholder="Alert message..." rows={3} style={{ width:"100%",background:"rgba(255,255,255,.04)",border:`1px solid ${T.border}`,borderRadius:8,padding:"9px 12px",color:"white",fontSize:13,boxSizing:"border-box",fontFamily:"'Syne',sans-serif",resize:"vertical" }}/>
+          </div>
+          <div style={{ display:"flex",gap:10 }}>
+            <button onClick={()=>setShowAdd(false)} style={{ flex:1,padding:"11px",background:"transparent",border:`1px solid ${T.border}`,color:T.muted,borderRadius:9,fontSize:13,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>Cancel</button>
+            <button onClick={addAlert} style={{ flex:2,padding:"11px",background:`linear-gradient(135deg,${T.green},${T.greenD})`,color:"white",border:"none",borderRadius:9,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>Add Alert →</button>
+          </div>
+        </Modal>
+      )}
+      <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:22 }}>
+        <div>
+          <h1 style={{ color:"white",fontSize:22,fontWeight:700,marginBottom:3,fontFamily:"'Cormorant Garamond',serif" }}>Alerts Centre</h1>
+          <p style={{ color:T.muted,fontSize:14 }}>{alerts.filter(a=>!a.read).length} unread notifications</p>
+        </div>
+        <div style={{ display:"flex",gap:8 }}>
+          <button onClick={()=>setShowAdd(true)} style={{ padding:"7px 13px",background:T.green+"12",border:`1px solid ${T.green}38`,color:T.green,borderRadius:8,fontSize:12,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>+ Add</button>
+          <button onClick={()=>setAlerts(a=>a.map(x=>({...x,read:true})))} style={{ padding:"7px 13px",background:"transparent",border:`1px solid ${T.border}`,color:T.muted,borderRadius:8,fontSize:12,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>Mark all read</button>
+          <button onClick={()=>setAlerts(a=>a.filter(x=>!x.read))} style={{ padding:"7px 13px",background:"rgba(239,68,68,.07)",border:`1px solid ${T.red}22`,color:T.red,borderRadius:8,fontSize:12,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>Clear read</button>
+        </div>
+      </div>
+
+      <div style={{ display:"flex",gap:7,marginBottom:16 }}>
+        {["All","Unread","Read"].map(f=>(
+          <button key={f} onClick={()=>setFilter(f)} style={{ padding:"5px 13px",borderRadius:16,border:`1px solid ${filter===f?T.green+"55":T.border}`,background:filter===f?T.green+"12":"transparent",color:filter===f?T.green:T.muted,fontSize:12,cursor:"pointer",fontFamily:"'Syne',sans-serif",transition:"all .15s" }}>{f}</button>
+        ))}
+      </div>
+
+      <div style={{ display:"flex",flexDirection:"column",gap:9 }}>
+        {filtered.map(a=>(
+          <Card key={a.id} className="alert-row" style={{ padding:"13px 17px",opacity:a.read?.75:1,borderColor:!a.read?T.green+"22":T.border }}>
+            <div style={{ display:"flex",gap:11,alignItems:"flex-start" }}>
+              <AlertIcon type={a.type}/>
+              <div style={{ flex:1 }}>
+                <div style={{ display:"flex",justifyContent:"space-between",alignItems:"flex-start" }}>
+                  <p style={{ color:"white",fontSize:14,fontWeight:500 }}>{a.title}</p>
+                  <span style={{ color:T.muted,fontSize:10.5,marginLeft:11,flexShrink:0,fontFamily:"'JetBrains Mono',monospace" }}>{a.time}</span>
+                </div>
+                <p style={{ color:T.muted,fontSize:13,marginTop:3,lineHeight:1.5 }}>{a.msg}</p>
+              </div>
+              <div style={{ display:"flex",gap:6,alignItems:"center",flexShrink:0 }}>
+                {!a.read && <div style={{ width:7,height:7,borderRadius:"50%",background:T.green }}/>}
+                <button onClick={()=>setAlerts(al=>al.map(x=>x.id===a.id?{...x,read:!x.read}:x))} style={{ background:"transparent",border:`1px solid ${T.border}`,color:T.muted,borderRadius:6,padding:"3px 8px",fontSize:10.5,cursor:"pointer",fontFamily:"'Syne',sans-serif" }}>{a.read?"Unread":"Read"}</button>
+                <button onClick={()=>setAlerts(al=>al.filter(x=>x.id!==a.id))} style={{ background:"transparent",border:`1px solid ${T.border}`,color:T.muted,borderRadius:6,padding:"3px 7px",fontSize:11,cursor:"pointer" }}></button>
+              </div>
+            </div>
+          </Card>
+        ))}
+        {filtered.length===0 && <div style={{ textAlign:"center",padding:"40px",color:T.muted,fontSize:14 }}>No {filter.toLowerCase()} alerts.</div>}
+      </div>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════
+   DATABASE HOOK  (window.storage persistent KV store)
+═══════════════════════════════════════════════════════════ */
+function useDB() {
+  const [dbReady, setDbReady] = useState(false);
+  const [profile,  _setProfile]  = useState(null);
+  const [portfolio,_setPortfolio] = useState(PORTFOLIO_INIT);
+  const [alerts,   _setAlerts]   = useState(ALERTS_INIT);
+  const [opps,     _setOpps]     = useState(OPPS_INIT);
+  const [chatMsgs, _setChatMsgs] = useState([]);
+  const [screen,   _setScreen]   = useState("landing");
+  const [tab,      _setTab]      = useState("dashboard");
+  const [dbStatus, setDbStatus]  = useState("loading"); // loading | ok | error
+
+  /* ── helpers ── */
+  const save = useCallback(async (key, value) => {
+    try { await window.storage.set(key, JSON.stringify(value)); } catch(e) { console.warn("DB save error", key, e); }
+  }, []);
+
+  const load = useCallback(async (key, fallback) => {
+    try {
+      const r = await window.storage.get(key);
+      return r ? JSON.parse(r.value) : fallback;
+    } catch { return fallback; }
+  }, []);
+
+  /* ── boot: load everything from DB ── */
+  useEffect(() => {
+    (async () => {
+      try {
+        const [p, port, al, op, chat, sc, tb] = await Promise.all([
+          load("si:profile",   null),
+          load("si:portfolio", PORTFOLIO_INIT),
+          load("si:alerts",    ALERTS_INIT),
+          load("si:opps",      OPPS_INIT),
+          load("si:chat",      []),
+          load("si:screen",    "landing"),
+          load("si:tab",       "dashboard"),
+        ]);
+        _setProfile(p);
+        _setPortfolio(port);
+        _setAlerts(al);
+        _setOpps(op);
+        _setChatMsgs(chat);
+        _setScreen(sc === "app" && p ? "app" : p ? "app" : sc);
+        _setTab(tb);
+        setDbStatus("ok");
+      } catch(e) {
+        console.warn("DB boot error", e);
+        setDbStatus("error");
+      } finally {
+        setDbReady(true);
+      }
+    })();
+  }, []);
+
+  /* ── wrapped setters that auto-persist ── */
+  const setProfile = useCallback((p) => {
+    const val = typeof p === "function" ? p(null) : p;
+    _setProfile(val);
+    save("si:profile", val);
+  }, [save]);
+
+  const setPortfolio = useCallback((updater) => {
+    _setPortfolio(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      save("si:portfolio", next);
+      return next;
+    });
+  }, [save]);
+
+  const setAlerts = useCallback((updater) => {
+    _setAlerts(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      save("si:alerts", next);
+      return next;
+    });
+  }, [save]);
+
+  const setOpps = useCallback((updater) => {
+    _setOpps(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      save("si:opps", next);
+      return next;
+    });
+  }, [save]);
+
+  const setChatMsgs = useCallback((updater) => {
+    _setChatMsgs(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      // keep last 80 messages to stay within 5MB limit
+      const trimmed = next.slice(-80);
+      save("si:chat", trimmed);
+      return trimmed;
+    });
+  }, [save]);
+
+  const setScreen = useCallback((s) => {
+    _setScreen(s);
+    save("si:screen", s);
+  }, [save]);
+
+  const setTab = useCallback((t) => {
+    _setTab(t);
+    save("si:tab", t);
+  }, [save]);
+
+  const resetAll = useCallback(async () => {
+    try {
+      const keys = ["si:profile","si:portfolio","si:alerts","si:opps","si:chat","si:screen","si:tab"];
+      await Promise.all(keys.map(k => window.storage.delete(k).catch(()=>{})));
+    } catch {}
+    _setProfile(null); _setPortfolio(PORTFOLIO_INIT); _setAlerts(ALERTS_INIT);
+    _setOpps(OPPS_INIT); _setChatMsgs([]); _setScreen("landing"); _setTab("dashboard");
+  }, []);
+
+  return { dbReady, dbStatus, profile, setProfile, portfolio, setPortfolio, alerts, setAlerts, opps, setOpps, chatMsgs, setChatMsgs, screen, setScreen, tab, setTab, resetAll };
+}
+
+/* ═══════════════════════════════════════════════════════════
+   DB STATUS BADGE
+═══════════════════════════════════════════════════════════ */
+const DbBadge = ({ status }) => {
+  const cfg = {
+    loading:{ c:"#64748b", label:"DB ",     dot:"#64748b" },
+    ok:     { c:T.green,   label:"DB Synced", dot:T.green  },
+    error:  { c:T.gold,    label:"DB Offline (in-memory)", dot:T.gold },
+  }[status] || { c:T.gold, label:"DB ?", dot:T.gold };
+  return (
+    <div style={{ display:"flex",alignItems:"center",gap:5,background:"rgba(255,255,255,.04)",border:`1px solid ${cfg.dot}28`,borderRadius:12,padding:"3px 9px",cursor:"default" }} title="Persistent storage status">
+      <div style={{ width:5,height:5,borderRadius:"50%",background:cfg.dot,animation:status==="ok"?"livePulse 3s infinite":"none" }}/>
+      <span style={{ color:cfg.c,fontSize:9.5,fontWeight:600,fontFamily:"'JetBrains Mono',monospace",letterSpacing:".5px" }}>{cfg.label}</span>
+    </div>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════════
+   ROOT APP
+═══════════════════════════════════════════════════════════ */
+function App() {
+  const db = useDB();
+  const { dbReady, dbStatus, profile, setProfile, portfolio, setPortfolio,
+          alerts, setAlerts, opps, setOpps, chatMsgs, setChatMsgs,
+          screen, setScreen, tab, setTab, resetAll } = db;
+
+  /* ── loading splash ── */
+  if (!dbReady) return (
+    <div style={{ minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,fontFamily:"'Syne',sans-serif" }}>
+      <style>{CSS}</style>
+      <div style={{ width:44,height:44,background:`linear-gradient(135deg,${T.green},${T.blue})`,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,color:"white",fontFamily:"'Cormorant Garamond',serif",boxShadow:`0 0 32px ${T.green}40` }}>₹</div>
+      <div style={{ display:"flex",gap:6 }}>
+        {[0,1,2].map(i=><div key={i} style={{ width:8,height:8,borderRadius:"50%",background:T.green,animation:"dotBounce 1.2s infinite",animationDelay:`${i*.2}s` }}/>)}
+      </div>
+      <p style={{ color:T.muted,fontSize:13 }}>Loading your data</p>
+    </div>
+  );
+
+  const handleNavigate = (targetTab) => {
+    setTab(targetTab);
+    if (profile) setScreen("app");
+    else setScreen("onboarding");
+  };
+
+  if (screen === "landing") return <Landing onEnter={()=>setScreen("onboarding")} onNavigate={handleNavigate}/>;
+  if (screen === "onboarding" || !profile) return (
+    <Onboarding onComplete={p => { setProfile(p); setScreen("app"); }} onBack={() => setScreen("landing")}/>
+  );
+
+  const view = () => {
+    switch(tab) {
+      case "dashboard": return <Dashboard profile={profile} alerts={alerts} setTab={setTab} portfolio={portfolio}/>;
+      case "portfolio":  return <Portfolio portfolio={portfolio} setPortfolio={setPortfolio}/>;
+      case "chat":       return <Chat profile={profile} chatMsgs={chatMsgs} setChatMsgs={setChatMsgs}/>;
+      case "radar":      return <Radar opps={opps} setOpps={setOpps} setTab={setTab}/>;
+      case "alerts":     return <AlertsPage alerts={alerts} setAlerts={setAlerts}/>;
+      default:           return <Dashboard profile={profile} alerts={alerts} setTab={setTab} portfolio={portfolio}/>;
+    }
+  };
+
+  return (
+    <div style={{ minHeight:"100vh",background:T.bg }}>
+      <style>{CSS}</style>
+      <AppNav tab={tab} setTab={setTab} alerts={alerts} profile={profile} dbStatus={dbStatus} onReset={resetAll}/>
+      <TickerStrip/>
+      <main style={{ maxWidth:1200,margin:"0 auto" }}>{view()}</main>
+    </div>
+  );
+}
+
+/* Render the app */
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App/>);
+  </script>
+</body>
+</html>
+</html>
+
+
